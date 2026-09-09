@@ -1,101 +1,98 @@
 # Customer Churn — Power BI Dashboard
 
-`Customer_Churn_Prediction.pbix`
-
-An interactive, three-page Power BI dashboard built on the output of the churn prediction model (`Customer_Churn_Scored_PowerBI.csv`). It translates model predictions into a business-facing tool for exploring churn risk and prioritizing retention action — no Python knowledge required to use it.
-
----
+A 3-page interactive Power BI dashboard built on top of the churn prediction model's output, designed for a retention team to prioritize and act on at-risk customers — not just view analytics.
 
 ## Data Source
 
-This dashboard reads from `Customer_Churn_Scored_PowerBI.csv`, which contains the original customer dataset plus two model-generated columns:
-- `Churn_Probability` — predicted likelihood of churn (0–1), from the final XGBoost model
-- `Churn_Risk` — risk tier derived from that probability (Low / Medium / High / Very High)
+`churn_dashboard_data.csv` — the scored output of `Customer_churn_prediction.ipynb` (XGBoost model, test ROC-AUC 0.879), containing per-customer churn probability, risk tier, and original demographic/account features.
 
-See the dataset's own README for full column definitions and important usage notes (in particular, the `Complain` column should not be used in any analysis — it is a data leakage artifact retained only for traceability).
+Original raw dataset: [Bank Customer Churn Dataset](https://www.kaggle.com/datasets/radheshyamkollipara/bank-customer-churn) (Kaggle).
 
----
+## File
+
+- `Customer_Churn_Dashboard.pbix` — the Power BI report file (open in Power BI Desktop)
+- `Churn_Risk_Dashboard_Theme.json` — custom report theme (blue/white, applied via View → Themes → Browse for themes)
 
 ## Pages
 
 ### 1. Executive Summary
-A high-level, at-a-glance view of the overall customer base.
-
-- **KPI cards**: Total Customers, Total Churn Customers, Churn Rate, Balance at Risk, Expected Loss, Average Churn Probability
-- **Total Customers by Churn Risk** — population distribution across tiers
-- **Gender split** — customer composition by gender
-- **Card Type table** — customer count, average points, average balance, and churn rate by card type
-- **Churn Rate by Age** (scatter plot) — visualizes how churn risk rises and peaks across age groups
-- **Churn Rate by Geography** (map) — geographic view highlighting Germany's disproportionately high churn rate
-
-*Purpose: answer "what's the overall situation?" in under 30 seconds.*
+Top-line view for a quick health check on churn across the customer base.
+- **KPI cards:** Churn Rate, Total Customers, Churn Customers, AVG Balance, AVG Credit Score, AVG Estimated Salary
+- **Customer Metrics by Geography** — table (Churn Rate, Total/Churn Customers, AVG Balance/Points/Credit Score per country)
+- **Churn Rate by Risk Category** — bar chart, validates the model's tiers against actual outcomes
+- **Churn Rate by Age** — scatter plot, shows the full non-linear age pattern (peak in the 40s–50s)
+- **Churn Rate by Gender** — donut
+- **Churn Rate by Num of Products** — bar chart (flags the 3–4 product anomaly)
+- **Slicers:** Gender, Age Group, Geography, Risk Category
 
 ### 2. Risk Segmentation
-A detailed breakdown of churn risk by tier and key drivers.
-
-- **KPI cards** (same core metrics as page 1, filterable independently)
-- **Risk Profile table** — Total Customers, Average Age, Churn Rate, Expected Loss, and average behavioral metrics, broken down by risk tier
-- **Churn Rate by Gender** (donut)
-- **Churn Rate by Geography** (bar chart)
-- **Churn Rate by Churn Risk** (donut) — validates the tier definitions against actual churn outcomes
-- **Churn Rate by Number of Products** (bar chart) — the dashboard's most striking finding: churn rate rises from 7.6% (2 products) to 100% (4 products), with customer counts shown via tooltip for transparency
-
-*Purpose: answer "how does risk break down, and what's driving it?"*
+Deeper cut into how risk tiers relate to other customer attributes.
+- **Risk Profile table** — Total/Churn Customers, Churn Rate, AVG Age/Balance/Salary/Tenure, per risk tier
+- **Churn Rate by Age Group** — bar chart (0–30 / 31–40 / 41–60 / 60+)
+- **Churn Rate by Age Group and Risk Category** — clustered column, cross-cuts the age spike against risk tiers
+- **Churn Rate by Active_Status** — donut (Active vs Inactive)
+- **Churn Rate by Geography** — bar chart
+- **Slicers:** Gender, Geography, Risk Category
 
 ### 3. Priority Customer List
-An actionable, filterable list for the retention team.
+Action-oriented page for the retention team — not just analysis, a working prioritization tool.
+- **Risk tier toggle buttons:** Low / Medium / High / Very High Risk Customers (bookmark-driven filter buttons)
+- **Top 50 Priority Customers table:** Customer ID, Churn Probability, Gender, Priority Score, Geography, Age Group, Is_Activemember, Num_of_products — sorted descending by Priority Score
+- **KPI cards:** Total Customers, Churn Rate, AVG Age (all update with the selected risk tier)
+- **SHAP Summary visual (Python visual):** live SHAP beeswarm plot for the currently filtered risk tier, explaining which features are driving predictions for that segment
+- **Slicers:** Geography, Gender
 
-- **Bookmark toggle buttons**: switch between "High Risk" and "Very High Risk" customer views (also drives which SHAP image is displayed)
-- **KPI cards** (dynamic, reflect only the currently filtered/selected group): Total Customers, Average Churn Probability, Sum of Priority Score
-- **Top 50 Priority Customers table** — sorted by `Priority Score` (Churn Probability × Balance), showing Customer ID, Churn Probability, Balance, Age, Geography, Activity Status, and Number of Products
-- **SHAP Summary image** — embedded static SHAP plot (generated in Python) explaining the top churn drivers specifically within the currently selected risk tier
-- **Slicers**: Churn Risk, Gender, Geography — for further drill-down
+## Key Measures (DAX)
 
-*Purpose: answer "who should we act on first, and why?"*
+```dax
+Churn Rate = DIVIDE(SUM(churn_data[Exited]), COUNTROWS(churn_data))
 
+High Risk Count = 
+CALCULATE(COUNTROWS(churn_data), churn_data[Risk Category] IN {"High Risk", "Very High Risk"})
+
+Priority Score = 
+('churn_data'[Balance] * 'churn_data'[Churn Probability]) / 1000
+
+Age_Group = 
+SWITCH(
+    TRUE(),
+    churn_data[Age] <= 30, "0-30",
+    churn_data[Age] <= 45, "31-45",
+    churn_data[Age] <= 60, "46-60",
+    "60+"
+)
+
+Active_Status = IF(churn_data[Isactivemember] = 1, "Active", "Inactive")
+```
+
+> Note: `Age_Group` is sorted using `Age_Group_Sort` (Column tools → Sort by column) so it displays in logical order (0–30 → 31–45 → 46–60 → 60+) rather than Power BI's default alphabetical/value sort.
+
+## The SHAP Visual (Python Visual)
+
+The SHAP summary chart on the Priority Customer List page is a **Python visual**, which requires:
+1. Python enabled in Power BI Desktop (File → Options → Python scripting, pointing to an environment with `shap`, `pandas`, `matplotlib`, `xgboost` installed)
+2. The trained model's SHAP values (or the model + preprocessor) available to the script — either precomputed and joined into the dataset, or recomputed live inside the visual's script
+3. Because Python visuals can be slow to re-render, filtering (via the risk-tier buttons) may take a few seconds to update — this is expected Power BI/Python visual behavior, not a bug
+
+If Python visuals aren't available in your environment, substitute a static SHAP image (exported from the notebook) per risk tier, swapped via bookmarks tied to the same toggle buttons.
+
+## How to Use This Dashboard
+
+1. Open `Customer_Churn_Dashboard.pbix` in Power BI Desktop
+2. If prompted, update the data source path to point to your local copy of `churn_dashboard_data.csv`
+3. Click **Refresh** to load current data
+4. Apply the theme: **View → Themes → Browse for themes → `Churn_Risk_Dashboard_Theme.json`** (if not already embedded)
+5. Use the top-right slicers on each page, or the risk-tier buttons on Page 3, to filter
+
+## Design Notes
+
+- All three pages share consistent slicers (Gender, Geography, Risk Category where applicable) for cross-page filtering consistency
+- KPI cards are intentionally duplicated with page-relevant context (e.g., AVG Credit Score on the Executive Summary vs. AVG Points Earned on Risk Segmentation) rather than reused identically, so each page's cards support that page's specific narrative
+- Card Type was tested as a driver but found to be weak/flat (19–22% churn range across all 4 types) — kept as a minor supporting chart rather than a headline visual
+
+## Known Limitations
+
+- `Priority Score` (`Balance × Churn Probability`) is a simplified value-at-risk proxy — a CLV-weighted version would be more rigorous but requires assumed margin figures not present in the source data (see the Python notebook's README for the CLV formula used elsewhere in this project)
+- The SHAP Python visual's feature names show internal preprocessing prefixes (`cat__`, `remainder__`) as generated by scikit-learn's `ColumnTransformer.get_feature_names_out()`; strip these in the export step for a cleaner label if presenting externally
 ---
 
-## Interactivity
-
-- All visuals are cross-filterable — clicking any chart element filters the rest of the page
-- Slicers for Geography, Gender, Churn Risk, and Card Type are available across pages
-- Bookmarks on the Priority Customer List page toggle between High and Very High risk views, including swapping the embedded SHAP image
-
----
-
-## Key DAX Measures
-
-| Measure | Logic |
-|---|---|
-| Churn Rate | Churned Customers ÷ Total Customers |
-| Balance at Risk | Sum of Balance where Churn Risk is High or Very High |
-| Expected Loss | Sum of (Churn Probability × Balance) across all customers |
-| Priority Score | Churn Probability × Balance (calculated column) — used to rank the Priority Customer List |
-
----
-
-## Validation
-
-All churn rate and count figures in this dashboard were manually cross-checked against the source Python notebook's calculations to confirm consistency — e.g., churn rate by risk tier and by number of products matched exactly between the two tools.
-
----
-
-## Theme
-
-A custom theme (`Churn_Analytics_Theme.json`) was applied for consistent typography (Segoe UI) and a coordinated blue/teal/coral color palette across all visuals, KPI cards, and tables.
-
----
-
-## How to Use
-
-1. Open `Customer_Churn_Prediction.pbix` in Power BI Desktop
-2. If prompted, update the data source path to point to your local copy of `Customer_Churn_Scored_PowerBI.csv`
-3. Use the slicers and bookmark buttons on each page to explore the data — no editing required for standard use
-4. To refresh with new scored data, replace the CSV and click **Refresh** in the Home ribbon
-
----
-
-## Companion Files
-
-- `Customer_churn_prediction.ipynb` — Python notebook containing the full modeling, statistical testing, and SHAP analysis behind this dashboard's data
-- `Customer_Churn_Scored_PowerBI.csv` — the underlying scored dataset
