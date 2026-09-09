@@ -70,9 +70,8 @@ All pages are cross-filtered by Gender, Geography, and Risk Category, with a cus
 
 ```
 ├── Customer_churn_prediction.ipynb   # Full analysis: EDA, hypothesis testing, modeling, SHAP
-├── churn_dashboard_data.csv          # Model output exported for Power BI
+├── Customer_churn_Predictiob.csv          # Model output exported for Power BI
 ├── Churn_Risk_Dashboard.pbix         # Power BI dashboard (3 pages)
-├── Churn_Risk_Dashboard_Theme.json   # Custom Power BI theme
 └── README.md
 ```
 
